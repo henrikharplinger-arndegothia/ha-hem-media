@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Hem Media",
+        "description": "TMDB-nyckel (gratis på themoviedb.org → Inställningar → API, 'API Read Access Token') och valfritt en put.io-token (put.io → Settings → Apps → OAuth token).",
+        "data": {
+          "tmdb_token": "TMDB token / API key",
+          "putio_token": "put.io OAuth token"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Fel nyckel",
+      "cannot_connect": "Kunde inte nå tjänsten"
+    },
+    "abort": {
+      "already_configured": "Redan konfigurerad"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Hem Media",
+        "data": {
+          "region": "Region (SE)",
+          "services": "Dina tjänster (kommaseparerade)"
+        }
+      }
+    }
+  },
+  "services": {
+    "search": {
+      "name": "Sök",
+      "description": "Search TMDB + put.io",
+      "fields": {
+        "query": {
+          "name": "Query",
+          "description": "Title"
+        }
+      }
+    },
+    "clear": {
+      "name": "Clear",
+      "description": "Clear the search"
+    },
+    "play_putio": {
+      "name": "Play put.io",
+      "description": "Play a put.io video on a media player",
+      "fields": {
+        "file_id": {
+          "name": "File id",
+          "description": "put.io file or folder id"
+        },
+        "entity_id": {
+          "name": "Player",
+          "description": "Media player (e.g. Apple TV)"
+        }
+      }
+    }
+  }
+}
