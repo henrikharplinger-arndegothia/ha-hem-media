@@ -9,9 +9,9 @@ from .const import DOMAIN
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coord = hass.data[DOMAIN][entry.entry_id]
-    ents = [HemMediaSearchSensor(coord, entry)]
+    ents = [HemMediaSearchSensor(coord, entry), BrowseSensor(coord, entry)]
     if coord.putio:
-        ents += [PutioStorageSensor(coord, entry), PutioLatestSensor(coord, entry)]
+        ents += [PutioStorageSensor(coord, entry), PutioLatestSensor(coord, entry), PutioVideosSensor(coord, entry)]
     async_add_entities(ents)
 
 
@@ -28,6 +28,8 @@ class _Base(CoordinatorEntity, SensorEntity):
 
 class HemMediaSearchSensor(_Base):
     """State = last query; attributes tmdb (where to watch) and putio (my files)."""
+
+    _unrecorded_attributes = frozenset({"tmdb", "putio"})
 
     def __init__(self, coord, entry) -> None:
         super().__init__(coord, entry, "search", "Sök", "mdi:movie-search")
@@ -77,3 +79,42 @@ class PutioLatestSensor(_Base):
     @property
     def extra_state_attributes(self):
         return {"files": (self.coordinator.data or {}).get("latest", [])}
+
+
+class BrowseSensor(_Base):
+    """"Vet inte vad vi ska se": state = number of rows; attribute rows [{key, title, items}]."""
+
+    _unrecorded_attributes = frozenset({"rows"})   # large, changes every few hours; no history needed
+
+    def __init__(self, coord, entry) -> None:
+        super().__init__(coord, entry, "browse", "Bläddra", "mdi:movie-open-star")
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    @property
+    def native_value(self):
+        return len(self.coordinator.browse)
+
+    @property
+    def extra_state_attributes(self):
+        at = self.coordinator.browse_at
+        return {"rows": self.coordinator.browse, "updated": at.isoformat() if at else None}
+
+
+class PutioVideosSensor(_Base):
+    """Newest videos inside put.io folders, with title/poster guessed from the file name."""
+
+    _unrecorded_attributes = frozenset({"videos"})
+
+    def __init__(self, coord, entry) -> None:
+        super().__init__(coord, entry, "putio_videos", "put.io videor", "mdi:filmstrip-box-multiple")
+
+    @property
+    def native_value(self):
+        return len((self.coordinator.data or {}).get("videos", []))
+
+    @property
+    def extra_state_attributes(self):
+        return {"videos": (self.coordinator.data or {}).get("videos", [])}

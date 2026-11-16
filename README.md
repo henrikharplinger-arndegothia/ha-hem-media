@@ -29,6 +29,8 @@ No download/indexer search is included.
 | `sensor.hem_media_sok` | last query | `tmdb`: [{title, year, kind, poster, on_my_services, other_streaming, rent, buy, link}], `putio`: [{id, name, type, size_gb, image}] |
 | `sensor.hem_media_put_io_lagring` | % used | used_gb, size_gb, free_gb |
 | `sensor.hem_media_put_io_senaste` | count | files: [{id, name, type, size_gb, created, image}] |
+| `sensor.hem_media_put_io_videor` | count | videos: newest videos inside put.io folders, with title/year/poster/episode guessed from the file name via TMDB |
+| `sensor.hem_media_bladdra` | rows | rows: [{key, title, items}] — "För barnen" + "Populärt på <tjänst>" for each of your services (refresh every 6 h); items have `app` (the app to open) |
 
 ## Services
 

@@ -18,3 +18,20 @@ PUTIO_API = "https://api.put.io/v2"
 
 UPDATE_MINUTES = 15
 SEARCH_LIMIT = 6
+
+BROWSE_HOURS = 6          # "Vet inte vad vi ska se": popular rows refresh interval
+BROWSE_PER_ROW = 12
+PUTIO_RECENT = 12         # newest videos found inside put.io folders
+PUTIO_WALK_FOLDERS = 15   # newest top-level put.io items walked per refresh (API budget)
+
+# TMDB provider name -> app name used by script.hem_tv (Apple TV source name / Samsung app key).
+APP_FOR_SERVICE = {
+    "netflix": "Netflix",
+    "hbo max": "HBO Max",
+    "max": "HBO Max",
+    "disney plus": "Disney+",
+    "apple tv plus": "TV",
+    "apple tv+": "TV",
+}
+# Short label per app for the dashboard badges.
+LABEL_FOR_APP = {"Netflix": "Netflix", "HBO Max": "HBO Max", "Disney+": "Disney+", "TV": "Apple TV+"}

@@ -2,6 +2,8 @@
 
 Services:
   hem_media.search      {query}                  → sensor.hem_media_sok (attributes tmdb + putio)
+  (polled)                                       → sensor.hem_media_bladdra (popular rows per service + kids),
+                                                    sensor.hem_media_put_io_videor (newest videos, with posters)
   hem_media.clear                                → empties the search
   hem_media.play_putio  {file_id, entity_id}     → plays a put.io video (or the largest video in a
                                                     folder) on a media player, e.g. an Apple TV (AirPlay)
@@ -10,6 +12,8 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+
+from homeassistant.util import dt as dt_util
 
 import voluptuous as vol
 
@@ -22,8 +26,9 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import AuthError, PutioClient, TmdbClient
-from .const import (CONF_PUTIO_TOKEN, CONF_REGION, CONF_SERVICES, CONF_TMDB_TOKEN, DEFAULT_REGION,
-                    DEFAULT_SERVICES, DOMAIN, QUERY_MAX, SEARCH_LIMIT, UPDATE_MINUTES)
+from .const import (BROWSE_HOURS, CONF_PUTIO_TOKEN, CONF_REGION, CONF_SERVICES, CONF_TMDB_TOKEN,
+                    DEFAULT_REGION, DEFAULT_SERVICES, DOMAIN, PUTIO_RECENT, PUTIO_WALK_FOLDERS, QUERY_MAX,
+                    SEARCH_LIMIT, UPDATE_MINUTES)
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["sensor"]
@@ -42,14 +47,49 @@ class HemMediaCoordinator(DataUpdateCoordinator):
         self.putio = PutioClient(session, token) if token else None
         self.search_result: dict = {"query": "", "tmdb": [], "putio": [], "errors": []}
         self.search_gen = 0   # bumped by every search/clear; stale searches don't overwrite newer ones
+        self.browse: list[dict] = []
+        self.browse_at = None
+        self._match_cache: dict[str, dict] = {}   # put.io file name -> TMDB guess
+
+    async def _refresh_browse(self) -> None:
+        now = dt_util.utcnow()
+        if self.browse_at and now - self.browse_at < timedelta(hours=BROWSE_HOURS) and self.browse:
+            return
+        try:
+            self.browse = await self.tmdb.browse()
+            self.browse_at = now
+            self.async_update_listeners()   # publish even if the put.io part of this poll fails
+        except Exception as err:  # noqa: BLE001 — keep the old rows; try again next poll
+            _LOGGER.warning("TMDB browse failed: %s", err)
+
+    async def _videos(self) -> list[dict]:
+        vids = await self.putio.recent_videos(PUTIO_RECENT, PUTIO_WALK_FOLDERS)
+        for v in vids:
+            m = self._match_cache.get(v["name"])
+            if m is None:
+                m, ok = await self.tmdb.match_file(v["name"])
+                if ok:   # don't cache a timeout/429: try again next poll
+                    if len(self._match_cache) > 300:
+                        self._match_cache.clear()
+                    self._match_cache[v["name"]] = m
+            v.update({"title": m["title"] or v["name"], "year": m["year"], "kind": m["kind"],
+                      "episode": m["episode"], "poster": m["poster"]})
+        return vids
 
     async def _async_update_data(self) -> dict:
+        await self._refresh_browse()
         if not self.putio:
-            return {"account": None, "latest": []}
+            return {"account": None, "latest": [], "videos": []}
         try:
-            return {"account": await self.putio.account(), "latest": await self.putio.latest()}
+            data = {"account": await self.putio.account(), "latest": await self.putio.latest()}
         except Exception as err:  # noqa: BLE001
             raise UpdateFailed(f"put.io: {err}") from err
+        try:
+            data["videos"] = await self._videos()
+        except Exception as err:  # noqa: BLE001 — keep storage/latest even if the walk fails
+            _LOGGER.warning("put.io video list failed: %s", err)
+            data["videos"] = (self.data or {}).get("videos", [])
+        return data
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -72,6 +112,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if len(q) > 1:
             try:
                 result["tmdb"] = await c.tmdb.search(q, SEARCH_LIMIT)
+                for it in result["tmdb"]:   # app to open on the TV: first of my services that has it
+                    it["app"] = next((c.tmdb.app_for(s) for s in it["on_my_services"] if c.tmdb.app_for(s)), "")
             except AuthError:
                 result["errors"].append("tmdb: nyckeln avvisades")
             except Exception as err:  # noqa: BLE001

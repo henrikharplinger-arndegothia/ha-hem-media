@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from aiohttp import ClientResponseError, ClientSession, ClientTimeout
 
-from .const import PUTIO_API, TMDB_API, TMDB_IMG
+from .const import APP_FOR_SERVICE, BROWSE_PER_ROW, PUTIO_API, TMDB_API, TMDB_IMG
 
 _LOGGER = logging.getLogger(__name__)
 TIMEOUT = ClientTimeout(total=15)
@@ -48,6 +49,109 @@ class TmdbClient:
     def _mine(self, name: str) -> bool:
         return name.strip().lower() in self._services
 
+    @staticmethod
+    def app_for(name: str) -> str:
+        return APP_FOR_SERVICE.get(name.strip().lower(), "")
+
+    def _item(self, h: dict, kind: str, app: str = "") -> dict:
+        date = h.get("release_date") or h.get("first_air_date") or ""
+        return {
+            "tmdb_id": h.get("id"),
+            "kind": "film" if kind == "movie" else "serie",
+            "title": h.get("title") or h.get("name") or "",
+            "year": date[:4],
+            "poster": f"{TMDB_IMG}{h['poster_path']}" if h.get("poster_path") else "",
+            "app": app,
+        }
+
+    async def my_providers(self) -> list[tuple[int, str]]:
+        """(TMDB provider id, app name) for my services in the region, one per app."""
+        seen: dict[str, int] = {}
+        for kind in ("movie", "tv"):
+            data = await self._get(f"/watch/providers/{kind}", watch_region=self._region, language="sv-SE")
+            for p in data.get("results", []):
+                name = p.get("provider_name", "")
+                app = self.app_for(name)
+                if self._mine(name) and app and app not in seen:
+                    seen[app] = p["provider_id"]
+        return [(pid, app) for app, pid in seen.items()]
+
+    async def _discover(self, kind: str, provider_id: int, app: str, n: int, **extra: Any) -> list[dict]:
+        data = await self._get(
+            f"/discover/{kind}", watch_region=self._region, with_watch_providers=provider_id,
+            with_watch_monetization_types="flatrate", sort_by="popularity.desc", language="sv-SE",
+            include_adult="false", **extra)
+        return [self._item(h, kind, app) for h in data.get("results", []) if h.get("poster_path")][:n]
+
+    @staticmethod
+    def _mix(*lists: list[dict]) -> list[dict]:
+        out, seen = [], set()
+        for group in zip(*lists) if lists else []:
+            for it in group:
+                key = (it["kind"], it["tmdb_id"])
+                if key not in seen:
+                    seen.add(key)
+                    out.append(it)
+        for lst in lists:   # leftovers when lists differ in length
+            for it in lst:
+                key = (it["kind"], it["tmdb_id"])
+                if key not in seen:
+                    seen.add(key)
+                    out.append(it)
+        return out
+
+    async def browse(self) -> list[dict]:
+        """Rows for "we don't know what to watch": popular now per service, plus a kids row."""
+        rows, kids = [], []
+        for pid, app in await self.my_providers():
+            try:
+                films = await self._discover("movie", pid, app, BROWSE_PER_ROW // 2)
+                series = await self._discover("tv", pid, app, BROWSE_PER_ROW // 2)
+                rows.append({"key": app, "title": f"Populärt på {app if app != 'TV' else 'Apple TV+'}",
+                             "items": self._mix(series, films)[:BROWSE_PER_ROW]})
+                kids.append(self._mix(
+                    await self._discover("tv", pid, app, 3, with_genres="10762"),
+                    await self._discover("movie", pid, app, 3, with_genres="10751|16",
+                                         **{"certification_country": "SE", "certification.lte": "7"})))
+            except AuthError:
+                raise
+            except Exception as err:  # noqa: BLE001 — one service failing must not hide the others
+                _LOGGER.warning("TMDB browse failed for %s: %s", app, err)
+        if kids:
+            rows.insert(0, {"key": "barn", "title": "För barnen", "items": self._mix(*kids)[:BROWSE_PER_ROW]})
+        return rows
+
+    async def match_file(self, name: str) -> tuple[dict, bool]:
+        """Best TMDB guess (title, year, poster, kind, episode) for a put.io file name.
+        Returns (guess, ok); ok=False on a request failure, so the caller doesn't cache it."""
+        g = guess_title(name)
+        full = g.pop("full_title", "")
+        if not g["title"]:
+            return g, True
+        kind = "tv" if g["kind"] == "serie" else "movie"
+        base = {"language": "sv-SE", "include_adult": "false"}
+        tries = []
+        if g["year"]:
+            tries.append({"query": g["title"], "year" if kind == "movie" else "first_air_date_year": g["year"]})
+            if full and full != g["title"]:
+                tries.append({"query": full})      # "Blade Runner 2049": the number was part of the title
+        tries.append({"query": g["title"]})
+        res = []
+        try:
+            for q in tries:
+                res = (await self._get(f"/search/{kind}", **base, **q)).get("results", [])
+                if res:
+                    break
+        except AuthError:
+            raise
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("TMDB match failed for %s: %s", name, err)
+            return g, False
+        if res:
+            it = self._item(res[0], kind)
+            g.update({"title": it["title"] or g["title"], "year": it["year"] or g["year"], "poster": it["poster"]})
+        return g, True
+
     async def search(self, query: str, limit: int) -> list[dict]:
         data = await self._get("/search/multi", query=query, language="sv-SE", region=self._region, include_adult="false")
         hits = [h for h in data.get("results", []) if h.get("media_type") in ("movie", "tv")][:limit]
@@ -79,6 +183,45 @@ class TmdbClient:
         return out
 
 
+_VIDEO_EXT = re.compile(r"\.(mkv|mp4|avi|m4v|mov|ts|wmv)$", re.I)
+_EPISODE = re.compile(r"\b[Ss](\d{1,2})[ ._-]?[Ee](\d{1,3})(?:[-]?[Ee]\d{1,3})*\b")
+_SEASON = re.compile(r"\b(?:[Ss](\d{1,2})|Season[ ._-]?(\d{1,2}))\b", re.I)
+_YEAR = re.compile(r"(?<!\d)(19[3-9]\d|20[0-4]\d)(?!\d)")
+_JUNK = re.compile(r"\b(2160p|1080p|720p|480p|4k|uhd|web[- .]?dl|webrip|web|bluray|brrip|bdrip|hdtv|hdr\d*|"
+                   r"dv|x26[45]|h\.?26[45]|hevc|aac\d?|ac3|ddp?\d?|atmos|remux|proper|repack|extended|"
+                   r"multi|nordic|swesub)\b", re.I)
+
+
+def guess_title(name: str) -> dict:
+    """'The.Wild.Robot.2024.1080p.WEB-DL.mkv' -> title 'The Wild Robot', year 2024, film.
+    'Bluey.S03E12.720p.mkv' -> title 'Bluey', serie, episode 'S03E12'."""
+    base = _VIDEO_EXT.sub("", name)
+    base = re.sub(r"[\[\]()]", " ", base).replace(".", " ").replace("_", " ")
+    out = {"title": "", "year": "", "kind": "film", "episode": "", "poster": ""}
+    cut = len(base)
+    m = _EPISODE.search(base)
+    if m:
+        out.update(kind="serie", episode=f"S{int(m.group(1)):02d}E{int(m.group(2)):02d}")
+        cut = min(cut, m.start())
+    else:
+        s = _SEASON.search(base)
+        if s:
+            out.update(kind="serie", episode=f"Säsong {int(s.group(1) or s.group(2))}")
+            cut = min(cut, s.start())
+    j = _JUNK.search(base)
+    if j and j.start() > 0:
+        cut = min(cut, j.start())
+    out["full_title"] = re.sub(r"\s{2,}", " ", re.sub(r"[\s\-]+$", "", base[:cut]).strip(" -"))
+    years = [y for y in _YEAR.finditer(base[:cut]) if y.start() > 0]   # last year wins: "Blade Runner 2049 2017"
+    y = years[-1] if years else None
+    if y:
+        out["year"] = y.group(1)
+        cut = min(cut, y.start())
+    title = re.sub(r"[\s\-()\[\]]+$", "", base[:cut]).strip(" -")
+    out["title"] = re.sub(r"\s{2,}", " ", title)
+    return out
+
+
 class PutioClient:
     """put.io: account, latest files, search in my files, stream URLs."""
 
@@ -100,12 +243,12 @@ class PutioClient:
             _raise_for(r)
             return await r.json()
 
-    async def _children(self, parent_id: int) -> list[dict]:
-        """All children of a folder, following put.io's listing cursor (max 20 pages)."""
+    async def _children(self, parent_id: int, max_pages: int = 20) -> list[dict]:
+        """All children of a folder, following put.io's listing cursor (max_pages requests)."""
         data = await self._get("/files/list", parent_id=parent_id, per_page=200)
         files = list(data.get("files", []))
         cursor, pages = data.get("cursor"), 1
-        while cursor and pages < 20:
+        while cursor and pages < max_pages:
             data = await self._post("/files/list/continue", {"cursor": cursor, "per_page": 200})
             files += data.get("files", [])
             cursor, pages = data.get("cursor"), pages + 1
@@ -133,6 +276,30 @@ class PutioClient:
     async def latest(self, limit: int = 12) -> list[dict]:
         data = await self._get("/files/list", parent_id=0, sort_by="DATE_DESC", per_page=limit)
         return [self._file(f) for f in data.get("files", [])][:limit]
+
+    async def recent_videos(self, limit: int, walk_folders: int) -> list[dict]:
+        """Newest videos anywhere in put.io (looks inside the newest top-level folders, 3 levels),
+        so a folder like "chill.institute" shows what is actually in it."""
+        top = (await self._get("/files/list", parent_id=0, sort_by="DATE_DESC", per_page=walk_folders)).get("files", [])
+        videos = [f for f in top if f.get("file_type") == "VIDEO"]
+        # Budget = folder listings (one page of 200 each), so a refresh makes at most ~41 requests.
+        queue, depth, budget = [f["id"] for f in top if f.get("file_type") == "FOLDER"], 0, 40
+        while queue and depth < 3 and budget > 0:
+            nxt = []
+            for pid in queue:
+                if budget <= 0:
+                    break
+                budget -= 1
+                for k in await self._children(pid, max_pages=1):
+                    if k.get("file_type") == "VIDEO":
+                        videos.append(k)
+                    elif k.get("file_type") == "FOLDER":
+                        nxt.append(k["id"])
+            queue, depth = nxt, depth + 1
+        # Skip samples/extras; newest first
+        videos = [v for v in videos if (v.get("size") or 0) > 150e6 and "sample" not in v.get("name", "").lower()]
+        videos.sort(key=lambda v: v.get("created_at") or "", reverse=True)
+        return [self._file(v) for v in videos[:limit]]
 
     async def search(self, query: str, limit: int = 6) -> list[dict]:
         data = await self._get("/files/search", query=query, per_page=limit * 2)
