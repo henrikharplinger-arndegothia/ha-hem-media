@@ -42,5 +42,5 @@ data: {file_id: 123456789, entity_id: media_player.downstairs}
 action: hem_media.clear
 ```
 
-Note: put.io's HLS URL carries the OAuth token as a query parameter; it is sent only from Home
-Assistant to your own media player on the LAN.
+Note: playback uses put.io's separate *download token* (stream/download only), never your OAuth
+token; the URL is sent only from Home Assistant to your own media player on the LAN.
