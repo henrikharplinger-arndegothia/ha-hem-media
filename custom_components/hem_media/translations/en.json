@@ -57,6 +57,20 @@
           "description": "Media player (e.g. Apple TV)"
         }
       }
+    },
+    "open_app": {
+      "name": "Open app (Samsung)",
+      "description": "Bring an app to the foreground on a Samsung Tizen TV/projector.",
+      "fields": {
+        "entity_id": {
+          "name": "Samsung TV",
+          "description": "media_player from the Samsung TV integration"
+        },
+        "app_id": {
+          "name": "App ID",
+          "description": "Tizen app ID, e.g. 3201907018807 (Netflix)"
+        }
+      }
     }
   }
 }

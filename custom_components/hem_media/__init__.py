@@ -17,6 +17,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -115,11 +116,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             blocking=True,
         )
 
+    async def handle_open_app(call: ServiceCall) -> None:
+        # Samsung Tizen TVs/projectors: the samsungtv integration's play_media(app) can start an app in
+        # the background only; the TV's local REST API (port 8001) brings it to the foreground.
+        ent = er.async_get(hass).async_get(call.data["entity_id"])
+        entry = hass.config_entries.async_get_entry(ent.config_entry_id) if ent and ent.config_entry_id else None
+        if not entry or entry.domain != "samsungtv" or not entry.data.get("host"):
+            raise HomeAssistantError("open_app needs a media_player from the Samsung TV integration")
+        url = f"http://{entry.data['host']}:8001/api/v2/applications/{call.data['app_id']}"
+        try:
+            async with async_get_clientsession(hass).post(url, timeout=8) as resp:
+                if resp.status >= 400:
+                    raise HomeAssistantError(f"TV:n svarade {resp.status} (appen finns inte?)")
+        except HomeAssistantError:
+            raise
+        except Exception as err:  # noqa: BLE001
+            raise HomeAssistantError(f"TV:n svarar inte: {err}") from err
+
     if not hass.services.has_service(DOMAIN, "search"):
         hass.services.async_register(DOMAIN, "search", handle_search, schema=vol.Schema({vol.Required("query"): vol.All(cv.string, vol.Length(max=QUERY_MAX))}))
         hass.services.async_register(DOMAIN, "clear", handle_clear)
         hass.services.async_register(DOMAIN, "play_putio", handle_play_putio, schema=vol.Schema({
             vol.Required("file_id"): vol.Coerce(int), vol.Required("entity_id"): cv.entity_id}))
+        hass.services.async_register(DOMAIN, "open_app", handle_open_app, schema=vol.Schema({
+            vol.Required("entity_id"): cv.entity_id, vol.Required("app_id"): vol.Match(r"^[0-9A-Za-z._]{3,40}$")}))
     return True
 
 
@@ -128,6 +148,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
         if not hass.data[DOMAIN]:
-            for s in ("search", "clear", "play_putio"):
+            for s in ("search", "clear", "play_putio", "open_app"):
                 hass.services.async_remove(DOMAIN, s)
     return ok

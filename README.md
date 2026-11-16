@@ -40,6 +40,9 @@ action: hem_media.play_putio
 data: {file_id: 123456789, entity_id: media_player.downstairs}
 
 action: hem_media.clear
+
+action: hem_media.open_app        # Samsung Tizen TV/projector: app to the foreground
+data: {entity_id: media_player.projektor, app_id: "3201907018807"}   # Netflix
 ```
 
 Note: playback uses put.io's separate *download token* (stream/download only), never your OAuth

@@ -6,3 +6,7 @@ play_putio:
   fields:
     file_id: {required: true, example: 123456789, selector: {number: {min: 1, max: 99999999999, mode: box}}}
     entity_id: {required: true, example: media_player.downstairs, selector: {entity: {domain: media_player}}}
+open_app:
+  fields:
+    entity_id: {required: true, example: media_player.projektor, selector: {entity: {domain: media_player, integration: samsungtv}}}
+    app_id: {required: true, example: "3201907018807", selector: {text: {}}}
