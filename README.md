@@ -20,7 +20,7 @@ No download/indexer search is included.
      v3 API key. Free.
    - **put.io token** (optional): put.io → Settings → Apps → create an app / OAuth token.
 4. Options (⚙ on the integration): region (default `SE`) and your services as TMDB names them
-   (default `Netflix, HBO Max, Max, Disney Plus, Apple TV`).
+   (default `Netflix, HBO Max, Max, Disney Plus, Apple TV, Apple TV Plus`; TMDB calls Apple TV+ "Apple TV" since the rename).
 
 ## Entities
 

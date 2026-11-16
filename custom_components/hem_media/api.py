@@ -64,19 +64,21 @@ class TmdbClient:
             "app": app,
         }
 
-    async def my_providers(self) -> list[tuple[int, str]]:
-        """(TMDB provider id, app name) for my services in the region, one per app."""
-        seen: dict[str, int] = {}
+    async def my_providers(self) -> list[tuple[str, str]]:
+        """(TMDB provider ids joined with "|", app name) for my services in the region, one per app.
+        All ids for an app are kept (e.g. "Apple TV" store + subscription share a name since the
+        rename); discover with flatrate-only then returns just the subscription titles."""
+        seen: dict[str, set[int]] = {}
         for kind in ("movie", "tv"):
             data = await self._get(f"/watch/providers/{kind}", watch_region=self._region, language="sv-SE")
             for p in data.get("results", []):
                 name = p.get("provider_name", "")
                 app = self.app_for(name)
-                if self._mine(name) and app and app not in seen:
-                    seen[app] = p["provider_id"]
-        return [(pid, app) for app, pid in seen.items()]
+                if self._mine(name) and app:
+                    seen.setdefault(app, set()).add(p["provider_id"])
+        return [("|".join(str(i) for i in sorted(ids)), app) for app, ids in seen.items()]
 
-    async def _discover(self, kind: str, provider_id: int, app: str, n: int, **extra: Any) -> list[dict]:
+    async def _discover(self, kind: str, provider_id: str, app: str, n: int, **extra: Any) -> list[dict]:
         data = await self._get(
             f"/discover/{kind}", watch_region=self._region, with_watch_providers=provider_id,
             with_watch_monetization_types="flatrate", sort_by="popularity.desc", language="sv-SE",

@@ -8,8 +8,9 @@ CONF_SERVICES = "services"
 
 DEFAULT_REGION = "SE"
 # Provider names exactly as TMDB reports them for Sweden (case-insensitive equality, no substrings:
-# "Max" must not match "Cinemax", and "Apple TV" is Apple's rental store, not the Apple TV+ service).
-DEFAULT_SERVICES = ["Netflix", "HBO Max", "Max", "Disney Plus", "Apple TV Plus", "Apple TV+"]
+# "Max" must not match "Cinemax"). Since Apple's 2025 rename TMDB lists the subscription as "Apple TV";
+# that is safe because only the flatrate (subscription) list is matched — the store is under rent/buy.
+DEFAULT_SERVICES = ["Netflix", "HBO Max", "Max", "Disney Plus", "Apple TV", "Apple TV Plus", "Apple TV+"]
 QUERY_MAX = 100
 
 TMDB_API = "https://api.themoviedb.org/3"
@@ -30,6 +31,7 @@ APP_FOR_SERVICE = {
     "hbo max": "HBO Max",
     "max": "HBO Max",
     "disney plus": "Disney+",
+    "apple tv": "TV",
     "apple tv plus": "TV",
     "apple tv+": "TV",
 }
