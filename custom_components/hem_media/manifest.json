@@ -1,7 +1,7 @@
 {
   "domain": "hem_media",
   "name": "Hem Media (TMDB + put.io)",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "documentation": "https://github.com/henrikharplinger-arndegothia/ha-hem-media",
   "issue_tracker": "https://github.com/henrikharplinger-arndegothia/ha-hem-media/issues",
   "codeowners": [

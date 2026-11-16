@@ -139,7 +139,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_register(DOMAIN, "play_putio", handle_play_putio, schema=vol.Schema({
             vol.Required("file_id"): vol.Coerce(int), vol.Required("entity_id"): cv.entity_id}))
         hass.services.async_register(DOMAIN, "open_app", handle_open_app, schema=vol.Schema({
-            vol.Required("entity_id"): cv.entity_id, vol.Required("app_id"): vol.Match(r"^[0-9A-Za-z._]{3,40}$")}))
+            vol.Required("entity_id"): cv.entity_id, vol.Required("app_id"): vol.All(vol.Coerce(str), vol.Match(r"^[0-9A-Za-z._]{3,40}$"))}))
     return True
 
 
