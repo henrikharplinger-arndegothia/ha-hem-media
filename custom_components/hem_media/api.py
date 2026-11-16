@@ -7,7 +7,7 @@ from typing import Any
 
 from aiohttp import ClientResponseError, ClientSession, ClientTimeout
 
-from .const import APP_FOR_SERVICE, BROWSE_PER_ROW, PUTIO_API, TMDB_API, TMDB_IMG
+from .const import APP_FOR_SERVICE, BROWSE_PER_ROW, LABEL_FOR_APP, PUTIO_API, TMDB_API, TMDB_IMG
 
 _LOGGER = logging.getLogger(__name__)
 TIMEOUT = ClientTimeout(total=15)
@@ -109,7 +109,7 @@ class TmdbClient:
             try:
                 films = await self._discover("movie", pid, app, BROWSE_PER_ROW // 2)
                 series = await self._discover("tv", pid, app, BROWSE_PER_ROW // 2)
-                rows.append({"key": app, "title": f"Populärt på {app if app != 'TV' else 'Apple TV+'}",
+                rows.append({"key": app, "title": f"Populärt på {LABEL_FOR_APP.get(app, app)}",
                              "items": self._mix(series, films)[:BROWSE_PER_ROW]})
                 kids.append(self._mix(
                     await self._discover("tv", pid, app, 3, with_genres="10762"),

@@ -31,9 +31,12 @@ APP_FOR_SERVICE = {
     "hbo max": "HBO Max",
     "max": "HBO Max",
     "disney plus": "Disney+",
+    "viaplay": "Viaplay",
+    "amazon prime video": "Prime Video",
     "apple tv": "TV",
     "apple tv plus": "TV",
     "apple tv+": "TV",
 }
 # Short label per app for the dashboard badges.
-LABEL_FOR_APP = {"Netflix": "Netflix", "HBO Max": "HBO Max", "Disney+": "Disney+", "TV": "Apple TV+"}
+LABEL_FOR_APP = {"Netflix": "Netflix", "HBO Max": "HBO Max", "Disney+": "Disney+", "TV": "Apple TV+",
+                 "Viaplay": "Viaplay", "Prime Video": "Prime Video"}
